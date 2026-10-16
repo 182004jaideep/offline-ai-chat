@@ -1,10 +1,14 @@
 # Offline AI Chat
 
-A **fully offline, private AI chat assistant** for Windows. Double-click one file, and you get a local LLM running in your browser — no cloud API, no account, no data ever leaving your machine, and the browser profile is wiped the moment you close the window.
+**Run a private, offline AI chat assistant on Windows — a local ChatGPT alternative that works with no internet connection, no account, and no data ever leaving your machine.**
 
-Built on [llama.cpp](https://github.com/ggml-org/llama.cpp) for inference and a lightweight custom chat UI served straight from a local file.
+Double-click one file and you get a local LLM running in your browser, powered by [llama.cpp](https://github.com/ggml-org/llama.cpp), with a lightweight custom chat UI served straight from a local file. No sign-up, no API key, no subscription, no telemetry — everything runs on your own hardware.
 
 ![platform](https://img.shields.io/badge/platform-Windows-blue) ![license](https://img.shields.io/badge/license-MIT-green) ![status](https://img.shields.io/badge/status-early--stage-orange)
+
+### Contents
+
+[Why offline AI](#why) · [Offline AI Chat vs. cloud AI](#offline-ai-chat-vs-cloud-ai) · [Quick start](#quick-start) · [Choosing a model](#choosing-a-model) · [How it works](#how-it-works) · [Troubleshooting](#troubleshooting) · [FAQ](#faq) · [Roadmap](#roadmap)
 
 ## Why
 
@@ -15,6 +19,17 @@ Most "AI chat" tools ship your prompts to someone else's server. This one doesn'
 - **Auto-tuned to your hardware** — probes CPU core count and RAM at launch and picks sensible context size / thread count automatically.
 - **No install** — everything lives in one folder; nothing is written to the registry or `%AppData%`.
 - **OpenAI-compatible local API** — `llama-server` exposes a `/v1/chat/completions` endpoint on `127.0.0.1`, so you can point other local tools at it too.
+
+## Offline AI Chat vs. cloud AI
+
+| | Offline AI Chat | Typical cloud AI chat |
+|---|---|---|
+| Works without internet | ✅ Yes, after the one-time model download | ❌ No |
+| Your prompts leave your device | ❌ Never | ✅ Sent to a remote server |
+| Account / sign-up required | ❌ No | ✅ Usually |
+| Ongoing subscription cost | ❌ Free, runs on your own hardware | 💲 Often paid |
+| Data retained after you close it | ❌ Nothing — browser profile is shredded on exit | ⚠️ Depends on the provider's policy |
+| Works in flight / no-wifi / secure environments | ✅ Yes | ❌ No |
 
 ## Quick start
 
@@ -79,6 +94,29 @@ offline-ai-chat/
 - **"No .gguf model found"** — make sure the model file is directly inside `models/`, not a subfolder, and that it has a `.gguf` extension.
 - **Port 8585 already in use** — the script automatically kills any stray `llama-server.exe` holding that port before launching; if it still fails, check what else is bound to `127.0.0.1:8585`.
 - **Edge isn't installed** — this currently requires Microsoft Edge specifically (launched via `msedge --app`). See [Roadmap](#roadmap) for browser-agnostic plans.
+
+## FAQ
+
+**Is this really free?**
+Yes. The project is MIT-licensed, llama.cpp is MIT-licensed, and the models linked above are free to download. You only need hardware capable of running them — no subscription, no API key, no account.
+
+**Does it actually work with no internet connection?**
+Yes, once `setup.bat` has fetched the engine and you've downloaded a `.gguf` model. From that point on, `Run-Office-AI.bat` never makes a network call — `llama-server` and the chat UI both run entirely on `127.0.0.1`.
+
+**Is my data really private with offline AI?**
+Nothing you type is sent anywhere — there's no server to send it to. The chat UI talks only to `127.0.0.1:8585` on the same machine, and the Edge browser profile it runs in is deleted the moment you close the window.
+
+**How is this different from ChatGPT or other cloud AI assistants?**
+Cloud assistants run the model on someone else's servers and your prompts travel over the internet to get there. Offline AI Chat runs the same kind of model (an open-weight LLM via llama.cpp) locally on your CPU/RAM — slower per token than a data-center GPU, but nothing ever leaves your device, there's no account, and it keeps working with no internet at all.
+
+**What hardware do I need to run an LLM locally?**
+A reasonably modern CPU and 8–16 GB of RAM covers the models listed in [Choosing a model](#choosing-a-model). A GPU isn't required — this ships with a CPU-only engine by default, though llama.cpp also publishes CUDA/Vulkan builds if you want to accelerate it manually.
+
+**Does it work on macOS or Linux?**
+Not yet — the launcher is currently Windows-only (`.bat` + PowerShell + Edge). Cross-platform support is the top item on the [Roadmap](#roadmap) and a great first contribution; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+**Why Microsoft Edge specifically?**
+It's the only browser currently wired up for the `--inprivate` throwaway-profile launch. Browser-agnostic launching (Chrome, Firefox, your system default) is on the roadmap.
 
 ## Roadmap
 
