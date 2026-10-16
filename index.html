@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Office AI</title>
+<style>
+  :root {
+    --bg: #1e1f22;
+    --panel: #262730;
+    --bubble-user: #2f6fed;
+    --bubble-ai: #33343d;
+    --text: #e8e8ec;
+    --muted: #9a9aa5;
+    --accent: #2f6fed;
+    --border: #3a3b45;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    padding: 14px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+  }
+  #status {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #statusDot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #e05a4e;
+  }
+  #statusDot.ok { background: #3fc77a; }
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .msg {
+    max-width: 75%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 14px;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: var(--bubble-user);
+    color: #fff;
+    border-bottom-right-radius: 3px;
+  }
+  .msg.ai {
+    align-self: flex-start;
+    background: var(--bubble-ai);
+    border-bottom-left-radius: 3px;
+  }
+  .msg.sys {
+    align-self: center;
+    color: var(--muted);
+    font-size: 12px;
+    background: transparent;
+  }
+  #inputBar {
+    padding: 14px 20px;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+  }
+  #prompt {
+    flex: 1;
+    resize: none;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    max-height: 140px;
+  }
+  #prompt:focus { outline: none; border-color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 0 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button:not(:disabled):hover { background: #2660d4; }
+  #clearBtn {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    font-weight: 400;
+    padding: 0 14px;
+  }
+  #clearBtn:hover { color: var(--text); border-color: var(--muted); background: transparent; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Office AI</h1>
+    <div id="status"><span id="statusDot"></span><span id="statusText">Connecting...</span></div>
+  </header>
+  <div id="chat"></div>
+  <div id="inputBar">
+    <textarea id="prompt" rows="1" placeholder="Ask something..."></textarea>
+    <button id="clearBtn" type="button">Clear</button>
+    <button id="sendBtn" type="button">Send</button>
+  </div>
+</div>
+
+<script>
+const API_BASE = "http://127.0.0.1:8585";
+const chatEl = document.getElementById("chat");
+const promptEl = document.getElementById("prompt");
+const sendBtn = document.getElementById("sendBtn");
+const clearBtn = document.getElementById("clearBtn");
+const statusDot = document.getElementById("statusDot");
+const statusText = document.getElementById("statusText");
+
+let history = [];
+let busy = false;
+
+function addMessage(role, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return div;
+}
+
+function setBusy(v) {
+  busy = v;
+  sendBtn.disabled = v;
+  promptEl.disabled = v;
+}
+
+async function checkHealth() {
+  try {
+    const r = await fetch(API_BASE + "/health");
+    const j = await r.json();
+    if (j.status === "ok") {
+      statusDot.classList.add("ok");
+      statusText.textContent = "Engine ready";
+      return true;
+    }
+  } catch (e) {}
+  statusDot.classList.remove("ok");
+  statusText.textContent = "Waiting for engine...";
+  return false;
+}
+
+async function waitForEngine() {
+  const ok = await checkHealth();
+  if (!ok) setTimeout(waitForEngine, 2000);
+}
+
+async function sendPrompt() {
+  const text = promptEl.value.trim();
+  if (!text || busy) return;
+  promptEl.value = "";
+  promptEl.style.height = "auto";
+  addMessage("user", text);
+  history.push({ role: "user", content: text });
+  setBusy(true);
+
+  const aiDiv = addMessage("ai", "");
+  let full = "";
+
+  try {
+    const resp = await fetch(API_BASE + "/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: history,
+        stream: true,
+        temperature: 0.7
+      })
+    });
+
+    if (!resp.ok || !resp.body) throw new Error("Request failed: " + resp.status);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let lines = buffer.split("\n");
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const data = trimmed.slice(5).trim();
+        if (data === "[DONE]") continue;
+        try {
+          const json = JSON.parse(data);
+          const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
+          if (delta) {
+            full += delta;
+            aiDiv.textContent = full;
+            chatEl.scrollTop = chatEl.scrollHeight;
+          }
+        } catch (e) {}
+      }
+    }
+  } catch (err) {
+    full = full || ("[Error] Could not reach the AI engine: " + err.message);
+    aiDiv.textContent = full;
+  }
+
+  history.push({ role: "assistant", content: full });
+  setBusy(false);
+  promptEl.focus();
+}
+
+function clearChat() {
+  history = [];
+  chatEl.innerHTML = "";
+  addMessage("sys", "Conversation cleared.");
+}
+
+sendBtn.addEventListener("click", sendPrompt);
+clearBtn.addEventListener("click", clearChat);
+promptEl.addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendPrompt();
+  }
+});
+promptEl.addEventListener("input", function() {
+  promptEl.style.height = "auto";
+  promptEl.style.height = Math.min(promptEl.scrollHeight, 140) + "px";
+});
+
+waitForEngine();
+</script>
+</body>
+</html>

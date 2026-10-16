@@ -1,0 +1,23 @@
+# --- Model weights ---
+# GGUF models are multi-GB; never belongs in git. Download via README instructions.
+models/*.gguf
+models/*.bin
+models/*.safetensors
+
+# --- llama.cpp runtime binaries ---
+# Fetched by setup.bat (or manually from the llama.cpp releases page).
+# Keeping them out of git keeps the repo small and avoids shipping stale binaries.
+*.exe
+*.dll
+
+# --- Runtime scratch data ---
+# Recreated by Run-Office-AI.bat on every launch (Edge --user-data-dir profile)
+# and shredded on exit. Never commit browser profile/cache data.
+temp/
+dyn_args.txt
+
+# --- OS / editor noise ---
+Thumbs.db
+desktop.ini
+.DS_Store
+*.log
