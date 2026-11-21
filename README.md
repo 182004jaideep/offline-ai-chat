@@ -8,7 +8,7 @@ Build it once, then carry it (and your models) on a pendrive. It's a real deskto
 
 ### Contents
 
-[Why offline AI](#why) · [Quick start](#quick-start) · [Choosing a model](#choosing-a-model) · [Privacy modes](#privacy-modes) · [How it works](#how-it-works) · [Project structure](#project-structure) · [Troubleshooting](#troubleshooting) · [FAQ](#faq) · [Roadmap](#roadmap)
+[Why offline AI](#why) · [Licensing & who can use this](#licensing--who-can-use-this) · [Quick start](#quick-start) · [Choosing a model](#choosing-a-model) · [Limitations](#limitations) · [Privacy modes](#privacy-modes) · [How it works](#how-it-works) · [Project structure](#project-structure) · [Troubleshooting](#troubleshooting) · [FAQ](#faq) · [Roadmap](#roadmap) · [Contributing](#contributing)
 
 ## Why
 
@@ -20,38 +20,86 @@ Most "AI chat" tools ship your prompts to someone else's server. This one doesn'
 - **Multi-model, controlled from the terminal** — list, load, or run several `.gguf` models at once with `--list-models` / `--model <name>` (repeatable).
 - **Offline document search** — drop in `.txt`, `.md`, `.pdf`, `.docx`, or `.xlsx`/`.xls`/`.ods` files and the app answers questions using them as context, entirely locally (keyword search via SQLite FTS5). Attach a document right from the chat, or manage the whole library from the sidebar.
 - **Live model management from the UI** — see every model on the drive, load or unload any of them while the app is running (no restart, no CLI needed), with per-model status and per-reply latency (time-to-first-token, tokens/sec).
+- **A dedicated Coding mode** — source-code-aware ingestion, syntax-highlighted code blocks with Copy/Save, and a system prompt that explicitly tells the model it cannot execute code or access your filesystem (so it won't claim it "ran" something it didn't).
+- **Quick notes**, saved locally alongside your chat history — for anything you want to jot down without it being a conversation.
 - **Drive-removal fail-safe** — the app detects the drive disappearing mid-session, stops cleanly, and recovers automatically from a damaged database file on next launch rather than corrupting silently.
 - **OpenAI-compatible local API** — `llama-server` exposes a `/v1/chat/completions` endpoint on `127.0.0.1`, so you can point other local tools at it too.
 
+## Licensing & who can use this
+
+Short answer: **yes, you can use this, including commercially**, for most of the models linked in this README. Longer answer, because "AI license" questions usually have a catch hiding in the model weights rather than the code:
+
+| Component | License | What it means for you |
+|---|---|---|
+| This app (`offline-ai-chat`) | [MIT](LICENSE) | Use, modify, redistribute, sell — no restrictions, no attribution requirement beyond keeping the license file. |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) (the inference engine) | MIT | Same as above. Bundled as a compiled binary in `engine/`, not modified. |
+| [Tauri](https://tauri.app/) (the app shell) | MIT / Apache-2.0 | Same as above. |
+| Model weights (Qwen, Llama, etc.) | **Each model's own license — not this project's** | See below. Always check before shipping a product around one. |
+
+**Model licenses vary and some have real strings attached:**
+- **Qwen2.5 / Qwen2.5-Coder** models → Apache-2.0. Fully permissive, commercial use included, no special conditions.
+- **Meta Llama 3.1 / 3.2** models → the [Llama Community License](https://www.llama.com/llama3_1/license/), not MIT/Apache. It's free for almost everyone, but it has an actual clause: if your product or service has **more than 700 million monthly active users**, you need a separate license from Meta. It also requires a small attribution notice ("Built with Llama") in some redistribution cases. Read the license page, not just this summary, before building a product on it.
+- Any other GGUF model you drop in `models/` — check that model's own card on Hugging Face before commercial use. This project has no control over, and makes no claims about, third-party model licenses.
+
+**Who this is for:** individuals, students, researchers, and companies alike. There's no account, no telemetry, no usage cap, and no field-of-use restriction from this project itself — the only thing to double-check is the license of whichever `.gguf` model you personally choose to run.
+
 ## Quick start
 
-**Prerequisites (to build):** Windows 10/11, [Rust](https://rustup.rs/) + Cargo, [Node.js](https://nodejs.org/) + npm. (WebView2 is pre-installed on Windows 10/11; no separate browser needed to *run* the built app.)
+No prior Rust/Node/AI experience assumed — follow these in order.
 
-1. **Clone this repo and build the app:**
-   ```bash
-   git clone https://github.com/182004jaideep/offline-ai-chat.git
-   cd offline-ai-chat/app
-   npm install
-   npm run tauri build
-   ```
-   The built executable lands under `app/src-tauri/target/release/`.
-2. **Copy the built `.exe` to the repo root** (next to `models/` and `engine/`) — this is what makes it a self-contained, portable layout you can carry on a drive.
-3. **Run `setup.bat`** (from the repo root) if `engine/llama-server.exe` and its DLLs aren't already present — it fetches the llama.cpp engine (MIT-licensed, from the [official releases page](https://github.com/ggml-org/llama.cpp/releases)) into `engine/` and tells you exactly which model to grab next.
-4. **Download a model** (one-time) and drop the `.gguf` file into `models/`. See [Choosing a model](#choosing-a-model).
-5. **Run the app.** Double-click it, or from a terminal: `--list-models` to see what's available, `--model <name>` to load a specific one (repeatable for more than one at once). With no flags it loads the first model it finds.
-6. **Pick a privacy mode** in the window that opens, then chat. Closing the window stops the engine and cleans up automatically.
+**Prerequisites (only needed to *build* the app, not to run it afterward):**
+- Windows 10 or 11.
+- [Rust](https://rustup.rs/) — run the installer, accept the defaults. Check it worked by opening a new terminal and running `rustc --version`; it should print a version number, not "command not found."
+- [Node.js](https://nodejs.org/) (LTS version) — same idea: `node --version` should print a number afterward.
+- That's it. WebView2 (the native window renderer) is already built into Windows 10/11, so nothing extra is needed to *run* the built app — only to build it.
+
+**Step 1 — Check how much RAM your machine has.** Right-click the taskbar → Task Manager → Performance tab → Memory. Note the total (e.g. "8.0 GB"). You'll need this in Step 4.
+
+**Step 2 — Clone this repo and build the app:**
+```bash
+git clone https://github.com/182004jaideep/offline-ai-chat.git
+cd offline-ai-chat/app
+npm install
+npm run tauri build
+```
+This takes a few minutes the first time (it's compiling the Rust backend). When it finishes without errors, the built executable is at `app/src-tauri/target/release/app.exe`. If something fails here, see [Troubleshooting](#troubleshooting) before continuing.
+
+**Step 3 — Move the built app into place.** Copy `app.exe` out of that `target/` folder up to the repo root (`offline-ai-chat/`), next to `models/` and `setup.bat`. Rename it to `OfflineAI.exe` if you'd like a friendlier name. This is what makes the final result a single self-contained folder you can carry on a USB drive.
+
+**Step 4 — Run `setup.bat`** (double-click it, from the repo root). It fetches the llama.cpp engine binaries (MIT-licensed, from the [official releases page](https://github.com/ggml-org/llama.cpp/releases)) into an `engine/` folder, then tells you it couldn't find a model yet and points you at Step 5.
+
+**Step 5 — Download a model and drop it into `models/`.** Go to [Choosing a model](#choosing-a-model), match the RAM number you noted in Step 1 to a row in the table, follow that model's Hugging Face link, and download the `Q4_K_M` `.gguf` file (not the `.safetensors` or other formats). Put it directly inside the `models/` folder — not a subfolder.
+
+**Step 6 — Run the app.** Double-click `OfflineAI.exe`. A window opens; wait a few seconds for "Engine ready" in the top-right status. From a terminal instead, you can pass `--list-models` to see what it found, or `--model <name>` to pick a specific one.
+
+**Step 7 — Pick a privacy mode** in the window that opens (Normal or Disappearing — see [Privacy modes](#privacy-modes)), then start chatting. Closing the window stops everything cleanly — no background process is left running.
 
 ## Choosing a model
 
-Any [GGUF](https://huggingface.co/docs/hub/gguf)-format model works. With no `--model` flag, the app loads the first `.gguf` file it finds in `models/`. Some starting points:
+Any [GGUF](https://huggingface.co/docs/hub/gguf)-format model works. With no `--model` flag, the app loads the first `.gguf` file it finds in `models/`. Pick the row matching your *total* system RAM (not "free" RAM) from Step 1 of [Quick start](#quick-start):
 
-| Use case            | Model                                                                                             | Approx. size | RAM needed |
-|----------------------|-----------------------------------------------------------------------------------------------------|:------------:|:----------:|
-| Low-end machines     | [Qwen2.5-Coder-1.5B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF)    | ~1 GB        | 8 GB       |
-| Balanced / coding     | [Qwen2.5-Coder-7B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF)        | ~4.5 GB (Q4_K_M) | 16 GB |
-| General-purpose chat | [Meta-Llama-3.1-8B-Instruct-GGUF](https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF) | ~4.9 GB (Q4_K_M) | 16 GB |
+| Total system RAM | Model | License | Approx. size (Q4_K_M) |
+|---|---|---|:---:|
+| **4 GB** (old/budget laptops) | [Qwen2.5-0.5B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF) | Apache-2.0 | ~0.5 GB |
+| **8 GB** | [Qwen2.5-Coder-1.5B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF) | Apache-2.0 | ~1 GB |
+| **16 GB**, balanced / coding | [Qwen2.5-Coder-7B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF) | Apache-2.0 | ~4.5 GB |
+| **16 GB**, general-purpose chat | [Meta-Llama-3.1-8B-Instruct-GGUF](https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF) | Llama 3.1 Community License† | ~4.9 GB |
 
-Pick a `Q4_K_M` quantization unless you know you want something else. The app warns (but doesn't block) if your selected model(s) need more RAM than is currently available.
+† See [Licensing & who can use this](#licensing--who-can-use-this) — free to use, but not plain MIT/Apache; has a usage condition above 700M MAU.
+
+Pick the `Q4_K_M` quantization specifically unless you know you want something else — it's the standard balance of quality vs. size/speed for CPU-only inference. As a rule of thumb, budget the model's file size plus roughly 20–30% for the KV cache and runtime overhead, on top of whatever Windows and anything else running already needs; that's why an "8 GB" machine should run a ~1 GB model, not one close to 8 GB itself. The app warns (but doesn't block) if your selected model(s) need more RAM than is currently available.
+
+## Limitations
+
+This project makes local, private AI possible on ordinary hardware — but it's a genuinely different trade-off from a cloud assistant, not a drop-in replacement. Specifically:
+
+- **Noticeably less capable than frontier cloud models** (GPT/Claude/Gemini-class) on complex reasoning, long multi-step tasks, and up-to-date knowledge — these are much smaller, quantized, CPU-run models.
+- **Slower than cloud inference.** Expect single-digit-to-low-tens of tokens/second on a typical CPU, not the near-instant streaming of a data-center GPU.
+- **No internet access, by design** — the model only knows what's baked into its training data (generally a year or more stale) and can't browse, search, or fetch live information.
+- **No tool use or code execution** — in Coding mode especially, the model can write code but cannot run it, access your filesystem, or verify its own output; always treat suggestions as unverified until you test them yourself.
+- **Smaller practical context window** on CPU — technically supported context sizes (4K–16K+ tokens) get slow well before their stated maximum on modest hardware.
+- **Higher hallucination risk** than larger models, especially the smallest (0.5B–1.5B) tier — good for quick/simple tasks, not for anything where a confidently wrong answer is costly.
+- **Single-user, single-machine** — there's no multi-user concurrency, auth, or scaling story here; it's a personal tool, not a hosted service.
 
 ## Privacy modes
 
@@ -124,7 +172,7 @@ Nothing you type is sent anywhere — there's no server to send it to. The chat 
 Cloud assistants run the model on someone else's servers and your prompts travel over the internet to get there. Offline AI Chat runs the same kind of model (an open-weight LLM via llama.cpp) locally on your CPU/RAM — slower per token than a data-center GPU, but nothing ever leaves your device, there's no account, and it keeps working with no internet at all.
 
 **What hardware do I need to run an LLM locally?**
-A reasonably modern CPU and 8–16 GB of RAM covers the models listed in [Choosing a model](#choosing-a-model). A GPU isn't required — this ships with a CPU-only engine by default, though llama.cpp also publishes CUDA/Vulkan builds if you want to accelerate it manually.
+Any reasonably modern CPU, and as little as 4 GB of RAM for the smallest model — see the full [Choosing a model](#choosing-a-model) table for what fits your machine. A GPU isn't required — this ships with a CPU-only engine by default, though llama.cpp also publishes CUDA/Vulkan builds if you want to accelerate it manually.
 
 **Does it work on macOS or Linux?**
 The app is built on Tauri, which is cross-platform in principle, but this repo currently only builds and is tested for Windows (the bundled engine binaries, `setup.bat`, and the drive-loss watchdog are all Windows-specific right now). Cross-platform support is on the [Roadmap](#roadmap).
@@ -133,10 +181,19 @@ The app is built on Tauri, which is cross-platform in principle, but this repo c
 
 - [ ] Packaged, one-command release build (today you build from source with Rust + Node)
 - [ ] macOS / Linux build targets
-- [ ] UI for the notes/tracked-data feature (schema and backend commands already exist)
+- [ ] `.pptx` and other document formats for offline search
 - [ ] GPU-accelerated engine option (CUDA/Vulkan builds are already published upstream by llama.cpp)
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
+## Contributing
+
+Contributions are welcome — this is an early-stage project with real gaps to fill. A few places that would help most right now:
+
+- **Cross-platform builds** (macOS/Linux) — the single highest-value contribution; see [Roadmap](#roadmap).
+- **More document formats** for offline search (`.pptx` and others — `.txt`/`.md`/`.pdf`/`.docx`/`.xlsx` are already supported).
+- **A packaged release build** — a one-command installer/bundle instead of building from source.
+- **Bug reports** — if the build, `setup.bat`, or the app itself fails on your machine, open an issue with your Windows version and the exact error text.
+
+Full ground rules (what must never change, like "nothing lands on the host system"), the dev setup (`npm run tauri dev`), and how to test a real portable build are all in **[CONTRIBUTING.md](CONTRIBUTING.md)** — read that before opening a PR. No CLA, no account, no gatekeeping beyond normal code review.
 
 ## Credits
 
