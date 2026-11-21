@@ -5,8 +5,9 @@ models/*.bin
 models/*.safetensors
 
 # --- llama.cpp runtime binaries ---
-# Fetched by setup.bat (or manually from the llama.cpp releases page).
+# Fetched by setup.bat into engine/ (or manually from the llama.cpp releases page).
 # Keeping them out of git keeps the repo small and avoids shipping stale binaries.
+# (engine/LICENSE-llama.cpp.txt is plain text, not matched by these, and stays tracked.)
 *.exe
 *.dll
 
@@ -15,6 +16,14 @@ models/*.safetensors
 # and shredded on exit. Never commit browser profile/cache data.
 temp/
 dyn_args.txt
+
+# WebView2 profile/cache the Tauri app creates next to wherever it's run from.
+.runtime/
+
+# --- Private user data ---
+# Chat history, ingested documents, and notes. This is the user's private
+# data, lives on the drive, and must never end up in version control.
+data/
 
 # --- OS / editor noise ---
 Thumbs.db

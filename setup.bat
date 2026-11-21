@@ -7,10 +7,16 @@ echo  Offline AI Chat - First-time setup
 echo ================================================================
 echo.
 
-if exist "%~dp0llama-server.exe" (
-    echo [OK] llama-server.exe already present. Skipping engine download.
+REM Check for the launcher AND its implementation DLL: recent llama.cpp builds
+REM split the server into a small .exe stub plus llama-server-impl.dll, so the
+REM .exe alone existing does NOT mean a working engine is installed. Kept in
+REM their own engine\ folder, out of the way of the rest of the drive root.
+if exist "%~dp0engine\llama-server.exe" if exist "%~dp0engine\llama-server-impl.dll" (
+    echo [OK] Engine already present. Skipping engine download.
     goto CHECK_MODEL
 )
+
+if not exist "%~dp0engine" mkdir "%~dp0engine"
 
 echo [1/2] Downloading the llama.cpp inference engine (Windows CPU build)...
 echo        Source: https://github.com/ggml-org/llama.cpp/releases
@@ -31,15 +37,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "  $extractDir = Join-Path $env:TEMP 'llama-cpu-x64-extracted';" ^
   "  if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force };" ^
   "  Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force;" ^
-  "  $files = Get-ChildItem -Path $extractDir -Recurse -Include 'llama-server.exe','ggml*.dll','llama.dll';" ^
-  "  foreach ($f in $files) { Copy-Item $f.FullName -Destination '%~dp0' -Force; Write-Host ('  Installed ' + $f.Name) };" ^
+  "  $files = Get-ChildItem -Path $extractDir -Recurse -Include '*.dll','llama-server.exe';" ^
+  "  New-Item -ItemType Directory -Force -Path '%~dp0engine' | Out-Null;" ^
+  "  foreach ($f in $files) { Copy-Item $f.FullName -Destination '%~dp0engine' -Force; Write-Host ('  Installed ' + $f.Name) };" ^
   "  Remove-Item $zipPath -Force -ErrorAction SilentlyContinue;" ^
   "  Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue;" ^
   "  Write-Host '[OK] Engine installed.' -ForegroundColor Green;" ^
   "} catch {" ^
   "  Write-Host ('[ERROR] ' + $_.Exception.Message) -ForegroundColor Red;" ^
   "  Write-Host 'Download it manually from https://github.com/ggml-org/llama.cpp/releases';" ^
-  "  Write-Host '(grab the *-bin-win-cpu-x64.zip asset) and copy llama-server.exe + the DLLs next to this script.';" ^
+  "  Write-Host '(grab the *-bin-win-cpu-x64.zip asset) and copy llama-server.exe + the DLLs into an engine\ folder next to this script.';" ^
   "  exit 1;" ^
   "}"
 
@@ -70,8 +77,10 @@ echo.
 echo   General chat        : Meta-Llama-3.1-8B-Instruct-GGUF   (~4.9 GB, Q4_K_M)
 echo     https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF
 echo.
-echo After downloading, re-run this setup.bat (or just run Run-Office-AI.bat
-echo directly - it auto-picks whichever .gguf file it finds in models\).
+echo After downloading, re-run this setup.bat (or just run the built app
+echo directly - see README.md for build/run instructions; it auto-picks
+echo whichever .gguf file it finds in models\, or load one explicitly with
+echo --model ^<name^>).
 echo.
 
 :DONE
