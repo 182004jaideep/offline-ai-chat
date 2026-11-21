@@ -127,7 +127,17 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
             PRIMARY KEY (session_id, document_id)
         );",
-    )
+    )?;
+
+    // Additive column on an existing table -- execute_batch can't ignore a
+    // single failing statement, so this runs separately and swallows the
+    // "duplicate column" error on every run after the first.
+    let _ = conn.execute(
+        "ALTER TABLE sessions ADD COLUMN capability TEXT NOT NULL DEFAULT 'chat'",
+        [],
+    );
+
+    Ok(())
 }
 
 // --- sessions / messages -----------------------------------------------
@@ -138,6 +148,7 @@ pub struct SessionRow {
     pub id: i64,
     pub title: String,
     pub created_at: i64,
+    pub capability: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -149,22 +160,31 @@ pub struct MessageRow {
     pub created_at: i64,
 }
 
-pub fn create_session(conn: &Connection, title: &str) -> rusqlite::Result<i64> {
+pub fn create_session(conn: &Connection, title: &str, capability: &str) -> rusqlite::Result<i64> {
     conn.execute(
-        "INSERT INTO sessions (title, created_at) VALUES (?1, ?2)",
-        (title, now_millis()),
+        "INSERT INTO sessions (title, created_at, capability) VALUES (?1, ?2, ?3)",
+        (title, now_millis(), capability),
     )?;
     Ok(conn.last_insert_rowid())
 }
 
+pub fn update_session_title(conn: &Connection, session_id: i64, title: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE sessions SET title = ?1 WHERE id = ?2",
+        (title, session_id),
+    )?;
+    Ok(())
+}
+
 pub fn list_sessions(conn: &Connection) -> rusqlite::Result<Vec<SessionRow>> {
-    let mut stmt =
-        conn.prepare("SELECT id, title, created_at FROM sessions ORDER BY created_at DESC")?;
+    let mut stmt = conn
+        .prepare("SELECT id, title, created_at, capability FROM sessions ORDER BY created_at DESC")?;
     let rows = stmt.query_map([], |r| {
         Ok(SessionRow {
             id: r.get(0)?,
             title: r.get(1)?,
             created_at: r.get(2)?,
+            capability: r.get(3)?,
         })
     })?;
     rows.collect()

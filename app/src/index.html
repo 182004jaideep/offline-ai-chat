@@ -321,13 +321,13 @@
     background: #1f4a2e; color: #7adb96;
   }
 
-  #capabilityTabs { display: flex; gap: 8px; margin-bottom: 18px; }
-  .capabilityTab {
+  #capabilityFilterRow { display: flex; gap: 6px; margin-bottom: 8px; }
+  .capabilityFilterBtn {
     flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--muted);
-    padding: 8px 0; border-radius: 8px; font-size: 13px; font-weight: 600;
+    padding: 6px 0; border-radius: 7px; font-size: 12px; font-weight: 600;
   }
-  .capabilityTab.active { background: #1f4a2e; color: #7adb96; border-color: #2d6b43; }
-  .capabilityTab:not(.active):hover { color: var(--text); }
+  .capabilityFilterBtn.active { background: #1f4a2e; color: #7adb96; border-color: #2d6b43; }
+  .capabilityFilterBtn:not(.active):hover { color: var(--text); }
 
   #driveLostBanner {
     display: none;
@@ -381,6 +381,10 @@
       <button class="sidebarTab" id="tabNotes" type="button">Notes</button>
     </div>
     <div class="sidebarPanel active" id="chatsPanel">
+      <div id="capabilityFilterRow">
+        <button class="capabilityFilterBtn active" id="filterChatBtn" type="button">&#128172; Chat</button>
+        <button class="capabilityFilterBtn" id="filterCodingBtn" type="button">&#128187; Coding</button>
+      </div>
       <button class="sidebarAction" id="newChatBtn" type="button">+ New chat</button>
       <div id="sessionList"><div class="sidebarEmpty">No saved chats yet.</div></div>
     </div>
@@ -430,12 +434,8 @@
 
   <div id="modeOverlay">
     <div id="modeCard">
-      <div id="capabilityTabs">
-        <button class="capabilityTab active" id="capabilityChatBtn" type="button">&#128172; Chat</button>
-        <button class="capabilityTab" id="capabilityCodingBtn" type="button">&#128187; Coding</button>
-      </div>
       <h2>Choose how this conversation is kept</h2>
-      <p class="lead">You can pick again each time you start a new conversation.</p>
+      <p class="lead">Use the Chat / Coding toggle in the sidebar to pick what kind of conversation this is. This only asks about privacy, and only for a brand-new chat.</p>
       <button class="modeOption" id="modeNormalBtn" type="button">
         <strong>Normal &mdash; saved to this drive</strong>
         <span>Chat history is written to this drive only, never to the computer you're using it on. Stays until you delete it.</span>
@@ -461,6 +461,7 @@ const statusText = document.getElementById("statusText");
 let history = [];
 let busy = false;
 let sessionId = null;
+let sessionNeedsTitle = false; // true right after creating a new Normal-mode session, until its first message auto-titles it
 let tauriInvoke = null;
 let privacyMode = null; // 'normal' | 'disappearing'
 let capabilityMode = "chat"; // 'chat' | 'coding' -- independent of privacyMode
@@ -474,8 +475,8 @@ const capabilityBadge = document.getElementById("capabilityBadge");
 const modeOverlay = document.getElementById("modeOverlay");
 const modeNormalBtn = document.getElementById("modeNormalBtn");
 const modeDisappearingBtn = document.getElementById("modeDisappearingBtn");
-const capabilityChatBtn = document.getElementById("capabilityChatBtn");
-const capabilityCodingBtn = document.getElementById("capabilityCodingBtn");
+const filterChatBtn = document.getElementById("filterChatBtn");
+const filterCodingBtn = document.getElementById("filterCodingBtn");
 
 const CODING_SYSTEM_PROMPT =
   "You are a concise, practical coding assistant. Prefer showing solutions as code in fenced code blocks with the language tagged (e.g. ```python). Ask briefly for missing context (language/framework/version) only when truly necessary. Avoid long preambles -- get to the code or the answer quickly. " +
@@ -829,6 +830,14 @@ async function retrieveContext(query) {
   }
 }
 
+function deriveTitleFromMessage(text) {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= 48) return clean;
+  const cut = clean.slice(0, 48);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + "…";
+}
+
 async function sendPrompt() {
   const text = promptEl.value.trim();
   if (!text || busy || driveLost) return;
@@ -837,6 +846,14 @@ async function sendPrompt() {
   addMessage("user", text);
   history.push({ role: "user", content: text });
   persistMessage("user", text);
+
+  if (sessionNeedsTitle && sessionId !== null && tauriInvoke) {
+    sessionNeedsTitle = false;
+    tauriInvoke("update_session_title", { sessionId, title: deriveTitleFromMessage(text) })
+      .then(refreshSessions)
+      .catch(() => {});
+  }
+
   setBusy(true);
 
   const snippets = await retrieveContext(text);
@@ -975,11 +992,11 @@ function persistMessage(role, content) {
   }
 }
 
-async function startNewChat() {
-  if (privacyMode === "disappearing" && history.length > 0) {
-    if (!confirm("This disappearing conversation will be gone for good. Start a new chat anyway?")) return;
-  }
-
+// Clears the chat view back to "nothing open" without asking anything --
+// used when the chat you're looking at just got deleted out from under you.
+// A delete is a complete, deliberate action on its own; it shouldn't also
+// force the privacy-mode picker on you immediately afterward.
+function resetToEmptyChatView() {
   history = [];
   chatEl.innerHTML = "";
 
@@ -987,13 +1004,22 @@ async function startNewChat() {
     tauriInvoke("end_disappearing_session", { token: ephemeralToken }).catch(() => {});
   }
   sessionId = null;
+  sessionNeedsTitle = false;
   ephemeralToken = null;
   ephemeralAttachedDocIds = [];
   privacyMode = null;
+  setCapabilityMode("chat");
   updateModeBadge();
   setInputEnabled(false);
-  showModeModal();
   highlightActiveSession();
+}
+
+async function startNewChat() {
+  if (privacyMode === "disappearing" && history.length > 0) {
+    if (!confirm("This disappearing conversation will be gone for good. Start a new chat anyway?")) return;
+  }
+  resetToEmptyChatView();
+  showModeModal();
 }
 
 async function loadSession(id) {
@@ -1021,9 +1047,11 @@ async function loadSession(id) {
   enhanceCodeBlocks(chatEl);
 
   sessionId = id;
+  sessionNeedsTitle = false;
   ephemeralToken = null;
   privacyMode = "normal";
   modeOverlay.classList.add("hidden");
+  setCapabilityMode(sessionCapabilityById.get(id) || "chat");
   updateModeBadge();
   setInputEnabled(true);
   highlightActiveSession();
@@ -1035,6 +1063,8 @@ function highlightActiveSession() {
   }
 }
 
+const sessionCapabilityById = new Map();
+
 async function refreshSessions() {
   if (!tauriInvoke) return;
   let sessions = [];
@@ -1044,13 +1074,19 @@ async function refreshSessions() {
     return;
   }
 
+  sessionCapabilityById.clear();
+  for (const s of sessions) sessionCapabilityById.set(s.id, s.capability || "chat");
+
+  const visible = sessions.filter((s) => (s.capability || "chat") === sessionFilter);
+
   sessionListEl.innerHTML = "";
-  if (sessions.length === 0) {
-    sessionListEl.innerHTML = '<div class="sidebarEmpty">No saved chats yet.</div>';
+  if (visible.length === 0) {
+    const label = sessionFilter === "coding" ? "coding" : "chat";
+    sessionListEl.innerHTML = '<div class="sidebarEmpty">No saved ' + label + ' chats yet.</div>';
     return;
   }
 
-  for (const s of sessions) {
+  for (const s of visible) {
     const row = document.createElement("div");
     row.className = "sidebarRow";
     row.dataset.id = s.id;
@@ -1076,7 +1112,7 @@ async function refreshSessions() {
       try {
         await tauriInvoke("delete_session", { sessionId: s.id });
       } catch (err) {}
-      if (sessionId === s.id) startNewChat();
+      if (sessionId === s.id) resetToEmptyChatView();
       refreshSessions();
     });
 
@@ -1541,26 +1577,46 @@ function updateCapabilityBadge() {
   }
 }
 
+// Governs only the currently open/loaded conversation (system prompt,
+// temperature, badge) -- set when a chat is opened or created, never by
+// the sidebar filter toggle below.
 function setCapabilityMode(mode) {
   capabilityMode = mode;
-  capabilityChatBtn.classList.toggle("active", mode === "chat");
-  capabilityCodingBtn.classList.toggle("active", mode === "coding");
   updateCapabilityBadge();
 }
 
-capabilityChatBtn.addEventListener("click", function() { setCapabilityMode("chat"); });
-capabilityCodingBtn.addEventListener("click", function() { setCapabilityMode("coding"); });
+// Governs the sidebar filter (which chats are listed) and which capability
+// a brand-new chat gets. Deliberately separate from capabilityMode so
+// browsing "Coding" in the sidebar can't silently flip the system prompt
+// of a Chat-mode conversation you still have open.
+let sessionFilter = "chat";
+
+function setSessionFilter(mode) {
+  sessionFilter = mode;
+  filterChatBtn.classList.toggle("active", mode === "chat");
+  filterCodingBtn.classList.toggle("active", mode === "coding");
+  refreshSessions();
+}
+
+filterChatBtn.addEventListener("click", function() { setSessionFilter("chat"); });
+filterCodingBtn.addEventListener("click", function() { setSessionFilter("coding"); });
 
 async function chooseMode(mode) {
   privacyMode = mode;
   modeOverlay.classList.add("hidden");
+  setCapabilityMode(sessionFilter);
 
   if (tauriInvoke) {
     if (mode === "normal") {
       try {
+        // Placeholder only -- renamed to the first message's own text the
+        // moment it's sent (see sendPrompt), so the sidebar shows what the
+        // conversation is actually about instead of a timestamp.
         sessionId = await tauriInvoke("create_session", {
-          title: "Chat " + new Date().toLocaleString()
+          title: "New chat",
+          capability: sessionFilter
         });
+        sessionNeedsTitle = true;
         refreshSessions();
       } catch (e) {}
     } else {

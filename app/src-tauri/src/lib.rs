@@ -452,12 +452,13 @@ fn unload_model(name: String, state: tauri::State<EngineState>) -> Result<(), St
 #[tauri::command]
 fn create_session(
     title: String,
+    capability: String,
     db: tauri::State<DbState>,
     drive: tauri::State<DriveLost>,
 ) -> Result<i64, String> {
     check_drive(&drive)?;
     let conn = db.0.lock().map_err(db_err)?;
-    db::create_session(&conn, &title).map_err(db_err)
+    db::create_session(&conn, &title, &capability).map_err(db_err)
 }
 
 #[tauri::command]
@@ -468,6 +469,18 @@ fn list_sessions(
     check_drive(&drive)?;
     let conn = db.0.lock().map_err(db_err)?;
     db::list_sessions(&conn).map_err(db_err)
+}
+
+#[tauri::command]
+fn update_session_title(
+    session_id: i64,
+    title: String,
+    db: tauri::State<DbState>,
+    drive: tauri::State<DriveLost>,
+) -> Result<(), String> {
+    check_drive(&drive)?;
+    let conn = db.0.lock().map_err(db_err)?;
+    db::update_session_title(&conn, session_id, &title).map_err(db_err)
 }
 
 #[tauri::command]
@@ -1124,6 +1137,7 @@ pub fn run() {
             get_warnings,
             create_session,
             list_sessions,
+            update_session_title,
             save_message,
             get_messages,
             delete_session,
